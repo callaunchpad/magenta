@@ -119,14 +119,14 @@ class PhaseFunctionedLSTM(RNNCell):
 			phased_layers.append(interpolated) # W values
                 
                 concat = tf.concat([h, x], 1)
-                W_f = phased_layers[0]
-                b_f = phased_layers[1]
-                W_i = phased_layers[2]
-                b_i = phased_layers[3]
-                W_c = phased_layers[4]
-                b_c = phased_layers[5]
-                W_o = phased_layers[6]
-                b_o = phased_layers[7]
+                W_f = phased_layers[0] # forget Weights
+                b_f = phased_layers[1] # forget bias
+                W_i = phased_layers[2] # input Weights
+                b_i = phased_layers[3] # input bias
+                W_c = phased_layers[4] # new input weights
+                b_c = phased_layers[5] # new input bias
+                W_o = phased_layers[6] # output weights
+                b_o = phased_layers[7] # output bias
                 f = sigmoid(tf.matmul(W_f, concat) + b_f)
                 i = sigmoid(tf.matmul(W_i, concat) + b_i)
                 C_tilde = tanh(tf.matmul(W_c, concat) + b_c)
