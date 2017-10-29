@@ -313,6 +313,7 @@ class BasicLSTMCell(RNNCell):
     i, j, f, o = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
 
     # c * sigmoid(f + self._forget_bias) computes the result of the forget layer
+    # based off of [input, h]
     # sigmoid(i) * self._activation(j) computes what should be added to the cell
     # state. (self._activation is tanh in the colah blog, and should usually
     # be tanh)
@@ -320,7 +321,7 @@ class BasicLSTMCell(RNNCell):
         c * sigmoid(f + self._forget_bias) + sigmoid(i) * self._activation(j))
 
     # calculate the output by running activation on the cell state and multiplying
-    # with a filtered versin of 
+    # with a filtered version of the [input, h]
     new_h = self._activation(new_c) * sigmoid(o)
 
     if self._state_is_tuple:
