@@ -26,6 +26,7 @@ from tensorflow.python.ops.rnn_cell_impl import RNNCell
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import math_ops
 from math import pi, floor
+from tensorflow.python.ops import array_ops
 
 sigmoid = math_ops.sigmoid
 tanh = math_ops.tanh
@@ -99,7 +100,11 @@ class PhaseFunctionedLSTM(RNNCell):
        	return
 
     def __call__(self, input, state):
+                # (c, h) = state
+                # input = x
 		# right now assumes only one input at a time (i.e. input is just a vector)
+                h = state[1]
+                x = input
 		phase = input[-1]
 		input = input[:-1]
 		phase_num = (4 * phase) / (2 * pi) # assumes phase is from 0 - 2pi
@@ -111,11 +116,22 @@ class PhaseFunctionedLSTM(RNNCell):
 		phased_layers = []
 		for layer in self.layers:
 			interpolated = self.cubic_spline(self.layer[k(0)], self.layer[k(1)], self.layer[k(2)], self.layer[k(3)], w)
-			phased_layers.append(interpolated)
-
-
-
-		return
+			phased_layers.append(interpolated) # W values
+                
+                concat = tf.concat([h, x], 1)
+                W_f = phased_layers[0]
+                W_i = phased_layers[1]
+                W_c = phased_layers[2]
+                W_o = phased_layers[3]
+                f = sigmoid(tf.matmul(W_f, concat) + self.forget_bias)
+                i = sigmoid(tf.matmul(W_i, concat) + self.input_bias)
+                C_tilde = tanh(tf.matmul(W_c, concat) + self.new_bias)
+                o = sigmoid(tf.matmul(W_o, concat + self.output_bias)
+                new_c = f * c + i * C_tilde
+                new_h = o * tanh(new_c)
+                new_state = PFLSTMStateTuple(new_c, new_h)
+                
+		return (new_h, new_state)
 
 
 	def cubic_spline(self, y0, y1, y2, y3, mu):
