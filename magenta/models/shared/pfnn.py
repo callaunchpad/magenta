@@ -55,18 +55,6 @@ class PhaseFunctionedFFNN(base_layer.Layer):
 
         return tf.matmul(W0_phase, input) + b0_phase
 
-    def cost(self, input):
-
-        return
-
-    def save(self, database, prefix=''):
-
-        return
-
-    def load(self, database, prefix=''):
-
-    	return
-
 	def cubic_spline(self, y0, y1, y2, y3, mu):
 	    return ( \
 	        (-0.5*y0+1.5*y1-1.5*y2+0.5*y3)*mu*mu*mu + \
@@ -144,16 +132,3 @@ class PhaseFunctionedLSTM(RNNCell):
 	        (y0-2.5*y1+2.0*y2-0.5*y3)*mu*mu + \
 	        (-0.5*y0+0.5*y2)*mu + \
 	        (y1))
-
-    def cost(self, input):
-
-        return
-
-    def save(self, database, prefix=''):
-
-
-        return
-
-    def load(self, database, prefix=''):
-
-    	return
