@@ -120,13 +120,17 @@ class PhaseFunctionedLSTM(RNNCell):
                 
                 concat = tf.concat([h, x], 1)
                 W_f = phased_layers[0]
-                W_i = phased_layers[1]
-                W_c = phased_layers[2]
-                W_o = phased_layers[3]
-                f = sigmoid(tf.matmul(W_f, concat) + self.forget_bias)
-                i = sigmoid(tf.matmul(W_i, concat) + self.input_bias)
-                C_tilde = tanh(tf.matmul(W_c, concat) + self.new_bias)
-                o = sigmoid(tf.matmul(W_o, concat + self.output_bias)
+                b_f = phased_layers[1]
+                W_i = phased_layers[2]
+                b_i = phased_layers[3]
+                W_c = phased_layers[4]
+                b_c = phased_layers[5]
+                W_o = phased_layers[6]
+                b_o = phased_layers[7]
+                f = sigmoid(tf.matmul(W_f, concat) + b_f)
+                i = sigmoid(tf.matmul(W_i, concat) + b_i)
+                C_tilde = tanh(tf.matmul(W_c, concat) + b_c)
+                o = sigmoid(tf.matmul(W_o, concat + b_o)
                 new_c = f * c + i * C_tilde
                 new_h = o * tanh(new_c)
                 new_state = PFLSTMStateTuple(new_c, new_h)
