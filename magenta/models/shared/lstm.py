@@ -306,7 +306,8 @@ class BasicLSTMCell(RNNCell):
     else:
       c, h = array_ops.split(value=state, num_or_size_splits=2, axis=1)
 
-    #concat input and previous output for use in the lstm
+    # concat input and previous output for use in the lstm
+    # linear does the matrix multiplication (for the learning)
     concat = _linear([inputs, h], 4 * self._num_units, True)
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
