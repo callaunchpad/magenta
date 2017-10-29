@@ -18,11 +18,17 @@ https://github.com/sreyafrancis/PFNN
 """
 
 import numpy as np
+import collections
 import tensorflow as tf
 
 from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops.rnn_cell_impl import RNNCell
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import math_ops
 from math import pi, floor
+
+sigmoid = math_ops.sigmoid
+tanh = math_ops.tanh
 
 class PhaseFunctionedFFNN(base_layer.Layer):
 
@@ -67,17 +73,57 @@ class PhaseFunctionedFFNN(base_layer.Layer):
 	        (-0.5*y0+0.5*y2)*mu + \
 	        (y1))
 
+
+
+PFLSTMStateTuple = collections.namedtuple("PFLSTMStateTuple", ("c", "h"))
+
 class PhaseFunctionedLSTM(RNNCell):
 
 	def __init__(self, rng=rng, input_shape, output_shape, dropout=0.5):
+		self.phases = 4
 
+		self.forget_gate = [tf.Variable(tf.zeros([input_shape, output_shape]))] * self.phases
+		self.forget_bias = [tf.Variable(tf.zeros([output_shape]))] * self.phases
 
+		self.input_gate = [tf.Variable(tf.zeros([input_shape, output_shape]))] * self.phases
+		self.input_bias = [tf.Variable(tf.zeros([output_shape]))] * self.phases
+
+		self.new_input = [tf.Variable(tf.zeros([input_shape, output_shape]))] * self.phases
+		self.new_bias = [tf.Variable(tf.zeros([output_shape]))] * self.phases
+
+		self.output_gate = [tf.Variable(tf.zeros([input_shape, output_shape]))] * self.phases
+		self.output_bias = [tf.Variable(tf.zeros([output_shape]))] * self.phases
+
+		self.layers = [self.forget_gate, self.forget_bias, self.input_gate, self.input_bias\
+						self.new_input, self.new_bias, self.output_gate, self.output_bias]
        	return
 
-    def __call__(self, input):
+    def __call__(self, input, state):
+		# right now assumes only one input at a time (i.e. input is just a vector)
+		phase = input[-1]
+		input = input[:-1]
+		phase_num = (4 * phase) / (2 * pi) # assumes phase is from 0 - 2pi
+
+		phase_depth = phase_num % 1 # how far into the current phase we are
+		k = lambda n: (floor(phase_num) + n - 1) % 4 # control point selector function
+
+		# indices 0-1 = forget, 2-3 = input, 4-5 = new, 6-7 = output
+		phased_layers = []
+		for layer in self.layers:
+			interpolated = self.cubic_spline(self.layer[k(0)], self.layer[k(1)], self.layer[k(2)], self.layer[k(3)], w)
+			phased_layers.append(interpolated)
 
 
-        return
+
+		return
+
+
+	def cubic_spline(self, y0, y1, y2, y3, mu):
+	    return ( \
+	        (-0.5*y0+1.5*y1-1.5*y2+0.5*y3)*mu*mu*mu + \
+	        (y0-2.5*y1+2.0*y2-0.5*y3)*mu*mu + \
+	        (-0.5*y0+0.5*y2)*mu + \
+	        (y1))
 
     def cost(self, input):
 
