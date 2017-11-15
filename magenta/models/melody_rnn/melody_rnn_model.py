@@ -176,4 +176,19 @@ default_configs = {
             attn_length=40,
             clip_norm=3,
             learning_rate=0.001))
+    'phase_rnn': MelodyRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='phase_rnn',
+            description='Phase RNN'),
+        magenta.music.OneHotEventSequenceEncoderDecoder(
+            magenta.music.MelodyOneHotEncoding(
+                min_note=DEFAULT_MIN_NOTE,
+                max_note=DEFAULT_MAX_NOTE)),
+        tf.contrib.training.HParams(
+            batch_size=128,
+            rnn_layer_sizes=[128, 128],
+            dropout_keep_prob=0.5,
+            clip_norm=5,
+            attn_length=0, #before sends inputs summarizes, for debugging set to 0
+            learning_rate=0.001)),
 }
