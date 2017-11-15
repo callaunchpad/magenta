@@ -17,7 +17,7 @@ MelodyOneHotEncoding is an encoder_decoder.OneHotEncoding that specifies a one-
 hot encoding for Melody events, i.e. MIDI pitch values plus note-off and no-
 event.
 
-KeyMelodyEncoderDecoder is an encoder_decoder.EventSequenceEncoderDecoder that
+MelodyEncoderDecoder is an encoder_decoder.EventSequenceEncoderDecoder that
 specifies an encoding of Melody objects into input vectors and output labels for
 use by melody models.
 """
@@ -136,7 +136,7 @@ class KeyMelodyEncoderDecoder(encoder_decoder.EventSequenceEncoderDecoder):
 
   def __init__(self, min_note, max_note, lookback_distances=None,
                binary_counter_bits=7):
-    """Initializes the KeyMelodyEncoderDecoder.
+    """Initializes the PhaseMelodyEncoderDecoder.
 
     Args:
       min_note: The minimum midi pitch the encoded melody events can have.
@@ -165,7 +165,8 @@ class KeyMelodyEncoderDecoder(encoder_decoder.EventSequenceEncoderDecoder):
             self._binary_counter_bits +       # binary counters
             1 +                               # start of bar or not
             NOTES_PER_OCTAVE +                # total key estimate
-            NOTES_PER_OCTAVE)                 # recent key estimate
+            NOTES_PER_OCTAVE                  # recent key estimate
+            + 1)                              # phase
 
   @property
   def num_classes(self):
@@ -181,10 +182,10 @@ class KeyMelodyEncoderDecoder(encoder_decoder.EventSequenceEncoderDecoder):
 
     Returns a self.input_size length list of floats. Assuming
     self._min_note = 48, self._note_range = 36, two lookback distances, and
-    seven binary counters, then self.input_size = 74. Each index represents a
+    seven binary counters, then self.input_size = 75. Each index represents a
     different input signal to the model.
 
-    Indices [0, 73]:
+    Indices [0, 74]:
     [0, 35]: A note is playing at that pitch [48, 84).
     36: Any note is playing.
     37: Silence is playing.
@@ -196,6 +197,7 @@ class KeyMelodyEncoderDecoder(encoder_decoder.EventSequenceEncoderDecoder):
     49: The next event is the start of a bar.
     [50, 61]: The keys the current melody is in.
     [62, 73]: The keys the last 3 notes are in.
+    74: The phase that event is in
     Args:
       events: A magenta.music.Melody object.
       position: An integer event position in the melody.
@@ -282,9 +284,21 @@ class KeyMelodyEncoderDecoder(encoder_decoder.EventSequenceEncoderDecoder):
         input_[offset] = 1.0
       offset += 1
 
+    # Phase information
+    input_[offset] = getPhase(position, True)
+    offset += 1
+
+    # for val in input_:
+    #   print(type(val))
+
     assert offset == self.input_size
 
     return input_
+
+  def getPhase(self, position, debug_output = False, cycle = 4):
+    phase = (position % (cycle * DEFAULT_STEPS_PER_BAR)) / (cycle * DEFAULT_STEPS_PER_BAR)
+    if debug_output: print(phase, position)
+    return phase
 
   def events_to_label(self, events, position):
     """Returns the label for the given position in the melody.
