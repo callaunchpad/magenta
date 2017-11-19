@@ -16,6 +16,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from pfnn import PhaseFunctionedLSTM
 
 # internal imports
 import numpy as np
@@ -25,11 +26,19 @@ import magenta
 
 from tensorflow.python.util import nest as tf_nest
 
+# def make_pfnn_cell(rnn_layer_sizes,
+#                   dropout_keep_prob=1.0,
+#                   attn_length=0,
+#                   base_cell=magenta.models.shared.pfnn):
+#   return make_rnn_cell(rnn_layer_sizes,
+#                   dropout_keep_prob,
+#                   attn_length,
+#                   base_cell)
 
 def make_rnn_cell(rnn_layer_sizes,
                   dropout_keep_prob=1.0,
                   attn_length=0,
-                  base_cell=tf.contrib.rnn.BasicLSTMCell):
+                  base_cell=PhaseFunctionedLSTM):
   """Makes a RNN cell from the given hyperparameters.
 
   Args:
@@ -57,6 +66,8 @@ def make_rnn_cell(rnn_layer_sizes,
   cell = tf.contrib.rnn.MultiRNNCell(cells)
 
   return cell
+
+# make_rnn_cell = make_pfnn_cell
 
 
 def build_graph(mode, config, sequence_example_file_paths=None):
