@@ -175,7 +175,8 @@ default_configs = {
             dropout_keep_prob=0.5,
             attn_length=40,
             clip_norm=3,
-            learning_rate=0.001))
+            learning_rate=0.001)),
+
     'phase_rnn': MelodyRnnConfig(
         magenta.protobuf.generator_pb2.GeneratorDetails(
             id='phase_rnn',
@@ -190,5 +191,5 @@ default_configs = {
             dropout_keep_prob=0.5,
             clip_norm=5,
             attn_length=0, #before sends inputs summarizes, for debugging set to 0
-            learning_rate=0.001)),
+            learning_rate=0.001))
 }
