@@ -365,6 +365,7 @@ class OneHotEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
     input_ = [0.0] * self.input_size
     input_[self._one_hot_encoding.encode_event(events[position])] = 1.0
     input_[-1] = self.getPhase(position, True)
+    print("hi arsh")
     return input_
 
   def getPhase(self, position, debug_output = False, cycle = 4):
