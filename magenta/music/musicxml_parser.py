@@ -66,11 +66,6 @@ class AlternatingTimeSignatureException(MusicXMLParseException):
   pass
 
 
-class TimeSignatureParseException(MusicXMLParseException):
-  """Exception thrown when the time signature could not be parsed."""
-  pass
-
-
 class UnpitchedNoteException(MusicXMLParseException):
   """Exception thrown when an unpitched note is encountered.
 
@@ -84,11 +79,6 @@ class UnpitchedNoteException(MusicXMLParseException):
 
 class KeyParseException(MusicXMLParseException):
   """Exception thrown when a key signature cannot be parsed."""
-  pass
-
-
-class InvalidNoteDurationTypeException(MusicXMLParseException):
-  """Exception thrown when a note's duration type is invalid."""
   pass
 
 
@@ -566,16 +556,7 @@ class Measure(object):
         transpose = int(child.find('chromatic').text)
         self.state.transpose = transpose
         if self.key_signature is not None:
-          # Transposition is chromatic. Every half step up is 5 steps backward
-          # on the circle of fifths, which has 12 positions.
-          key_transpose = (transpose * -5) % 12
-          new_key = self.key_signature.key + key_transpose
-          # If the new key has >6 sharps, translate to flats.
-          # TODO(fjord): Could be more smart about when to use sharps vs. flats
-          # when there are enharmonic equivalents.
-          if new_key > 6:
-            new_key %= -6
-          self.key_signature.key = new_key
+          self.key_signature.key += transpose
       else:
         # Ignore other tag types because they are not relevant to Magenta.
         pass
@@ -849,7 +830,7 @@ class NoteDuration(object):
     self.seconds = 0                    # Duration in seconds
     self.time_position = 0              # Onset time in seconds
     self.dots = 0                       # Number of augmentation dots
-    self._type = 'quarter'              # MusicXML duration type
+    self.type = 'quarter'               # MusicXML duration type
     self.tuplet_ratio = Fraction(1, 1)  # Ratio for tuplets (default to 1)
     self.is_grace_note = True           # Assume true until not found
     self.state = state
@@ -938,17 +919,6 @@ class NoteDuration(object):
     """Return the duration ratio as a float."""
     ratio = self.duration_ratio()
     return ratio.numerator / ratio.denominator
-
-  @property
-  def type(self):
-    return self._type
-
-  @type.setter
-  def type(self, new_type):
-    if new_type not in self.TYPE_RATIO_MAP:
-      raise InvalidNoteDurationTypeException(
-          'Note duration type "{}" is not valid'.format(new_type))
-    self._type = new_type
 
 
 class ChordSymbol(object):
@@ -1248,14 +1218,8 @@ class TimeSignature(object):
       # not supported (ex: alternating meter)
       raise AlternatingTimeSignatureException('Alternating Time Signature')
 
-    beats = self.xml_time.find('beats').text
-    beat_type = self.xml_time.find('beat-type').text
-    try:
-      self.numerator = int(beats)
-      self.denominator = int(beat_type)
-    except ValueError:
-      raise TimeSignatureParseException(
-          'Could not parse time signature: {}/{}'.format(beats, beat_type))
+    self.numerator = int(self.xml_time.find('beats').text)
+    self.denominator = int(self.xml_time.find('beat-type').text)
     self.time_position = self.state.time_position
 
   def __str__(self):

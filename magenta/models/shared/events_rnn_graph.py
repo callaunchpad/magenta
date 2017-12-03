@@ -16,8 +16,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from pfnn import PhaseFunctionedLSTM
-
+from .pfnn import PhaseFunctionedLSTM
+from .pfnn import PhaseDropoutWrapper
+from .pfnn import PhaseAttentionCellWrapper
 # internal imports
 import numpy as np
 import six
@@ -54,12 +55,12 @@ def make_rnn_cell(rnn_layer_sizes,
   """
   cells = []
   for num_units in rnn_layer_sizes:
-    cell = base_cell(num_units)
+    cell = PhaseFunctionedLSTM(num_units)
     if attn_length and not cells:
       # Add attention wrapper to first layer.
-      cell = tf.contrib.rnn.AttentionCellWrapper(
+      cell = PhaseAttentionCellWrapper(
           cell, attn_length, state_is_tuple=True)
-    cell = tf.contrib.rnn.DropoutWrapper(
+    cell = PhaseDropoutWrapper(
         cell, output_keep_prob=dropout_keep_prob)
     cells.append(cell)
 
@@ -67,7 +68,7 @@ def make_rnn_cell(rnn_layer_sizes,
 
   return cell
 
-# make_rnn_cell = make_pfnn_cell
+
 
 
 def build_graph(mode, config, sequence_example_file_paths=None):

@@ -26,13 +26,26 @@ from tensorflow.python.ops.rnn_cell_impl import RNNCell
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import math_ops
 from math import pi, floor
+
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.contrib.rnn import AttentionCellWrapper
-from tensorflow.contrib.rnn import DropoutWrapper
+from tensorflow.python.ops.rnn_cell_impl import DropoutWrapper
+from tensorflow.python.ops.rnn_cell_impl import BasicLSTMCell
+from tensorflow.python.ops.rnn_cell_impl import _linear
+import tensorflow.python.ops.rnn_cell_impl
+from tensorflow.python.estimator import util as estimator_util
+from tensorflow.python.layers.base import Layer
+from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.util import nest
 
 sigmoid = math_ops.sigmoid
 tanh = math_ops.tanh
+_WEIGHTS_VARIABLE_NAME = "kernel"
+_BIAS_VARIABLE_NAME = "bias"
+_Linear = rnn_cell_impl._Linear
 
 class PhaseFunctionedFFNN(base_layer.Layer):
 
@@ -47,12 +60,16 @@ class PhaseFunctionedFFNN(base_layer.Layer):
         return
 
     def __call__(self, input):
-        phase = input[-1]
-        input = input[:-1]
-        phase_num = (4 * phase) / (2 * pi)
+        if(len(input.shape)>1):
+            phase = input[:,-1]
+            input = input[:,:-1]
+        else:
+            phase = input[-1]
+            input = input[:-1]
+        phase_num = (4 * phase) 
 
         phase_depth = phase_num % 1 # how far into the current phase we are
-        k = lambda n: (floor(phase_num) + n - 1) % 4
+        k = lambda n: ((phase_num)//1 + n - 1) % 4
         W0_phase = self.cubic_spline(self.W0[k(0)], self.W0[k(1)], self.W0[k(2)], self.W0[k(3)], w)
         b0_phase = self.cubi|c_spline(self.b0[k(0)], self.b0[k(1)], self.b0[k(2)], self.b0[k(3)], w)
 
@@ -69,64 +86,73 @@ class PhaseFunctionedFFNN(base_layer.Layer):
 
 PFLSTMStateTuple = collections.namedtuple("PFLSTMStateTuple", ("c", "h"))
 
-class PhaseFunctionedLSTM(RNNCell):
+class PhaseFunctionedLSTM(BasicLSTMCell):
 
-    def __init__(self, input_shape, output_shape, dropout=0.5):
+
+    def __init__(self, num_units, forget_bias=1.0, state_is_tuple=True, activation=None, reuse=None):
+        Layer.__init__(self)
         self.phases = 4
-
-        self.forget_gate = [tf.Variable(tf.zeros([input_shape, output_shape]))] * self.phases
-        self.forget_bias = [tf.Variable(tf.zeros([output_shape]))] * self.phases
-
-        self.input_gate = [tf.Variable(tf.zeros([input_shape, output_shape]))] * self.phases
-        self.input_bias = [tf.Variable(tf.zeros([output_shape]))] * self.phases
-
-        self.new_input = [tf.Variable(tf.zeros([input_shape, output_shape]))] * self.phases
-        self.new_bias = [tf.Variable(tf.zeros([output_shape]))] * self.phases
-
-        self.output_gate = [tf.Variable(tf.zeros([input_shape, output_shape]))] * self.phases
-        self.output_bias = [tf.Variable(tf.zeros([output_shape]))] * self.phases
-
-        self.layers = [self.forget_gate, self.forget_bias, self.input_gate, self.input_bias, \
-                        self.new_input, self.new_bias, self.output_gate, self.output_bias]
+        self._num_units = num_units
+        self._forget_bias = forget_bias
+        self._state_is_tuple = state_is_tuple
+        self._activation = activation or math_ops.tanh
+        self._dtype = tf.float32
         return
 
-    def __call__(self, input, state):
+    def __call__(self, inputs, state):
                 # (c, h) = state
                 # input = x
         # right now assumes only one input at a time (i.e. input is just a vector)
-        h = state[1]
-        x = input
-        phase = input[-1]
-        input = input[:-1]
-        phase_num = (4 * phase) / (2 * pi) # assumes phase is from 0 - 2pi
+        print("\ncalled\n")
+        if self._state_is_tuple:
+          c, h = state
+        else:
+          c, h = array_ops.split(value=state, num_or_size_splits=2, axis=1)
+
+        if(len(inputs.shape)>1):
+            inputs, phase = array_ops.split(inputs, [inputs.shape[1].value - 1, 1], axis=1)
+            # phase = inputs[:,-1]
+            # inputs = inputs[:,:-1]
+        else:
+            inputs, phase = array_ops.split(inputs, [inputs.shape[0].value - 1, 1], axis=0)
+            # phase = inputs[-1]
+            # inputs = inputs[:-1]
+
+        if (not self.built):
+            self.build(inputs.shape)
+
+        phase_num = (4 * phase) # assumes phase is from 0 - 1
 
         phase_depth = phase_num % 1 # how far into the current phase we are
-        k = lambda n: (floor(phase_num) + n - 1) % 4 # control point selector function
+        k = lambda n: (phase_num//1 + n - 1) % 4 # control point selector function
+        w = phase_depth
 
-        # indices 0-1 = forget, 2-3 = input, 4-5 = new, 6-7 = output
-        phased_layers = []
-        for layer in self.layers:
-            interpolated = self.cubic_spline(self.layer[k(0)], self.layer[k(1)], self.layer[k(2)], self.layer[k(3)], w)
-            phased_layers.append(interpolated) # W values
+        phased_temp = [None for _ in range(self.phases)]
+        kernel_split = array_ops.split(self._kernel, self.phases, axis=1)
+        bias_split = array_ops.split(self._bias, self.phases, axis=0)
 
-            concat = tf.concat([h, x], 1)
-            W_f = phased_layers[0] # forget Weights
-            b_f = phased_layers[1] # forget bias
-            W_i = phased_layers[2] # input Weights
-            b_i = phased_layers[3] # input bias
-            W_c = phased_layers[4] # new input weights
-            b_c = phased_layers[5] # new input bias
-            W_o = phased_layers[6] # output weights
-            b_o = phased_layers[7] # output bias
-            f = sigmoid(tf.matmul(W_f, concat) + b_f)
-            i = sigmoid(tf.matmul(W_i, concat) + b_i)
-            C_tilde = tanh(tf.matmul(W_c, concat) + b_c)
-            o = sigmoid(tf.matmul(W_o, concat + b_o))
-            new_c = f * c + i * C_tilde
-            new_h = o * tanh(new_c)
-            new_state = PFLSTMStateTuple(new_c, new_h)
+        for i in range(self.phases):
+            concat = math_ops.matmul(
+                array_ops.concat([inputs, h], 1), kernel_split[i])
+            concat = nn_ops.bias_add(concat, bias_split[i])
+            phased_temp[i] = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
 
-        return (new_h, new_state)
+        i = self.cubic_spline(phased_temp[0][0], phased_temp[1][0], phased_temp[2][0], phased_temp[3][0], w)
+        j = self.cubic_spline(phased_temp[0][1], phased_temp[1][1], phased_temp[2][1], phased_temp[3][1], w)
+        f = self.cubic_spline(phased_temp[0][2], phased_temp[1][2], phased_temp[2][2], phased_temp[3][2], w)
+        o = self.cubic_spline(phased_temp[0][3], phased_temp[1][3], phased_temp[2][3], phased_temp[3][3], w)
+
+        new_c = (c * sigmoid(f + self._forget_bias) + sigmoid(i) * self._activation(j))
+
+        # calculate the output by running activation on the cell state and multiplying
+        # with a filtered version of the [input, h]
+        new_h = self._activation(new_c) * sigmoid(o)
+
+        if self._state_is_tuple:
+          new_state = PFLSTMStateTuple(new_c, new_h)
+        else:
+          new_state = array_ops.concat([new_c, new_h], 1)
+        return new_h, new_state
 
 
     def cubic_spline(self, y0, y1, y2, y3, mu):
@@ -135,6 +161,37 @@ class PhaseFunctionedLSTM(RNNCell):
             (y0-2.5*y1+2.0*y2-0.5*y3)*mu*mu + \
             (-0.5*y0+0.5*y2)*mu + \
             (y1))
+
+    def build(self, inputs_shape):
+        if inputs_shape[1] is None:
+            raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
+                           % inputs_shape)
+
+        print("\n------------------------")
+        print(type(inputs_shape[1]))
+        print(inputs_shape[1])
+        print("------------------------\n")
+
+        input_depth = inputs_shape[1].value
+        h_depth = self._num_units
+        self._kernel = self.add_variable(
+            _WEIGHTS_VARIABLE_NAME,
+            shape=[input_depth + h_depth, 4 * self._num_units * self.phases])
+        self._bias = self.add_variable(
+            _BIAS_VARIABLE_NAME,
+            shape=[4 * self._num_units * self.phases],
+            initializer=init_ops.zeros_initializer(dtype=self.dtype))
+
+        self.built = True
+
+    @property
+    def state_size(self):
+        return (PFLSTMStateTuple(self._num_units, self._num_units)
+                    if self._state_is_tuple else 2 * self._num_units)
+
+    @property
+    def output_size(self):
+        return self._num_units
 
 
 class PhaseAttentionCellWrapper(AttentionCellWrapper):
@@ -168,6 +225,7 @@ class PhaseAttentionCellWrapper(AttentionCellWrapper):
               `state_is_tuple` is `False` or if attn_length is zero or less.
         """
         super(AttentionCellWrapper, self).__init__(_reuse=reuse)
+
         if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
             raise TypeError("The parameter cell is not RNNCell.")
         if nest.is_sequence(cell.state_size) and not state_is_tuple:
@@ -188,7 +246,10 @@ class PhaseAttentionCellWrapper(AttentionCellWrapper):
         self._state_is_tuple = state_is_tuple
         self._cell = cell
         self._attn_vec_size = attn_vec_size
-        self._input_size = input_size -1  # discount phase
+        if input_size:
+            self._input_size = input_size -1  # discount phase
+        else:
+            self._input_size = input_size
         self._attn_size = attn_size
         self._attn_length = attn_length
         self._reuse = reuse
@@ -201,8 +262,20 @@ class PhaseAttentionCellWrapper(AttentionCellWrapper):
         """Long short-term memory cell with attention (LSTMA)."""
 
         # store phase, shorten inputs
-        self.phase = inputs[-1]
-        inputs = inputs[:-1]
+
+        if(len(inputs.shape)>1):
+            inputs, self.phase = array_ops.split(inputs, [inputs.shape[1].value - 2, 2], axis=1)
+            reap = 1
+            # print(phase)
+            # phase = inputs[:,-1]
+            # inputs = inputs[:,:-1]
+        else:
+            inputs, self.phase = array_ops.split(inputs, [inputs.shape[0].value - 1, 1], axis=0)
+            reap = 0
+            # print(phase)
+            # phase = inputs[-1]
+            # inputs = inputs[:-1]
+
 
         if self._state_is_tuple:
             state, attns, attn_states = state
@@ -225,7 +298,8 @@ class PhaseAttentionCellWrapper(AttentionCellWrapper):
         inputs = self._linear1([inputs, attns])
 
         # append phase back into input so that PFNN can use it
-        inputs.append(self.phase)
+        # inputs.append(self.phase)
+        inputs = array_ops.concat([inputs, self.phase], reap)
 
         cell_output, new_state = self._cell(inputs, state)
         if self._state_is_tuple:
@@ -255,10 +329,12 @@ class PhaseDropoutWrapper(DropoutWrapper):
         state_keep_prob=1.0, variational_recurrent=False,
         input_size=None, dtype=None, seed=None,
         dropout_state_filter_visitor=None):
-
-        super().__init__(self, cell, input_keep_prob, output_keep_prob, state_keep_prob, variational_recurrent,
-            input_size, dtype, seed, dropout_state_filter_visitor)
-
+        
+        # super(PhaseDropoutWrapper, self).__init__(cell, input_keep_prob, output_keep_prob, state_keep_prob, variational_recurrent,
+        #     input_size, dtype, seed, dropout_state_filter_visitor)
+        super(PhaseDropoutWrapper, self).__init__(cell, input_keep_prob, output_keep_prob=output_keep_prob, state_keep_prob=state_keep_prob, 
+            variational_recurrent=variational_recurrent, input_size=input_size, 
+            dtype=dtype, seed=seed)
         #don't know if I need this
         if input_size:
             self.input_size = input_size -1
@@ -270,8 +346,20 @@ class PhaseDropoutWrapper(DropoutWrapper):
         """Run the cell with the declared dropouts."""
 
         # store phase value
-        self.phase = inputs[-1]
-        inputs = inputs[:-1]
+
+        if(len(inputs.shape)>1):
+            inputs, self.phase = array_ops.split(inputs, [inputs.shape[1].value -1, 1], axis=1)
+            reap = 1
+            print(inputs.shape)
+            print(self.phase.shape)
+            # print(phase)
+            # phase = inputs[:,-1]
+            # inputs = inputs[:,:-1]
+        else:
+            inputs, self.phase = array_ops.split(inputs, [inputs.shape[0].value - 1, 1], axis=0)
+            reap = 0
+            # phase = inputs[-1]
+            # inputs = inputs[:-1]
 
         def _should_dropout(p):
              return (not isinstance(p, float)) or p < 1
@@ -282,9 +370,10 @@ class PhaseDropoutWrapper(DropoutWrapper):
                                  self._input_keep_prob)
 
         # re-append phase so PFNN can use it
-        inputs.append(self.phase)
 
-        output, new_state = self._cell(inputs, state, scope)
+        inputs = array_ops.concat([inputs, self.phase], reap)
+
+        output, new_state = self._cell(inputs, state)
 
         if _should_dropout(self._state_keep_prob):
         #       Identify which subsets of the state to perform dropout on and
@@ -300,3 +389,5 @@ class PhaseDropoutWrapper(DropoutWrapper):
                                  self._recurrent_output_noise,
                                  self._output_keep_prob)
         return output, new_state
+
+

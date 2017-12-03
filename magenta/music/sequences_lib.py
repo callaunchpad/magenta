@@ -20,7 +20,6 @@ from operator import itemgetter
 
 # internal imports
 import numpy as np
-from six.moves import range  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from magenta.music import chord_symbols_lib
@@ -105,19 +104,18 @@ def trim_note_sequence(sequence, start_time, end_time):
   return subsequence
 
 
-def extract_subsequence(sequence, start_time, end_time,
-                        sustain_control_number=64):
+def extract_subsequence(sequence, start_time, end_time):
   """Extracts a subsequence from a NoteSequence.
 
   Notes starting before `start_time` are not included. Notes ending after
-  `end_time` are truncated. Time signature, tempo, key signature, chord changes,
-  and sustain pedal events outside the specified time range are removed;
-  however, the most recent event of each of these types prior to `start_time` is
-  included at `start_time`. This means that e.g. if a time signature of 3/4 is
-  specified in the original sequence prior to `start_time` (and is not followed
-  by a different time signature), the extracted subsequence will include a 3/4
-  time signature event at `start_time`. Pitch bends and control changes other
-  than sustain are removed entirely.
+  `end_time` are truncated. Time signature, tempo, key signature, and chord
+  changes outside the specified time range are removed; however, the most recent
+  event of each of these types prior to `start_time` is included at
+  `start_time`. This means that e.g. if a time signature of 3/4 is specified in
+  the original sequence prior to `start_time` (and is not followed by a
+  different time signature), the extracted subsequence will include a 3/4 time
+  signature event at `start_time`. Pitch bends and control changes are removed
+  entirely.
 
   The extracted subsequence is shifted to start at time zero.
 
@@ -125,7 +123,6 @@ def extract_subsequence(sequence, start_time, end_time,
     sequence: The NoteSequence to extract a subsequence from.
     start_time: The float time in seconds to start the subsequence.
     end_time: The float time in seconds to end the subsequence.
-    sustain_control_number: The MIDI control number for sustain pedal.
 
   Returns:
     A new NoteSequence containing the subsequence of `sequence` from the
@@ -159,274 +156,92 @@ def extract_subsequence(sequence, start_time, end_time,
     if new_note.end_time > subsequence.total_time:
       subsequence.total_time = new_note.end_time
 
-  # Extract time signatures, key signatures, tempos, and chord changes (other
-  # text annotations are deleted).
-
+  # Extract time signatures.
   del subsequence.time_signatures[:]
-  del subsequence.key_signatures[:]
-  del subsequence.tempos[:]
-  del subsequence.text_annotations[:]
-
-  event_types = [
-      music_pb2.NoteSequence.TimeSignature, music_pb2.NoteSequence.KeySignature,
-      music_pb2.NoteSequence.Tempo, music_pb2.NoteSequence.TextAnnotation]
-  events_by_type = [
-      sequence.time_signatures, sequence.key_signatures, sequence.tempos,
-      [annotation for annotation in sequence.text_annotations
-       if annotation.annotation_type == CHORD_SYMBOL]]
-  new_event_containers = [
-      subsequence.time_signatures, subsequence.key_signatures,
-      subsequence.tempos, subsequence.text_annotations]
-
-  for event_type, events, container in zip(
-      event_types, events_by_type, new_event_containers):
-    initial_event = None
-    for event in sorted(events, key=lambda event: event.time):
-      if event.time <= start_time:
-        initial_event = event_type()
-        initial_event.CopyFrom(event)
-        continue
-      elif event.time >= end_time:
-        break
-      new_event = container.add()
-      new_event.CopyFrom(event)
-      new_event.time -= start_time
-    if initial_event:
-      initial_event.time = 0.0
-      container.extend([initial_event])
-    container.sort(key=lambda event: event.time)
-
-  # Extract sustain pedal events (other control changes are deleted). Sustain
-  # pedal state prior to the extracted subsequence is maintained per-instrument.
-  del subsequence.control_changes[:]
-  sustain_events = [cc for cc in sequence.control_changes
-                    if cc.control_number == sustain_control_number]
-  initial_sustain_events = {}
-  for sustain_event in sorted(sustain_events, key=lambda event: event.time):
-    if sustain_event.time <= start_time:
-      initial_sustain_event = music_pb2.NoteSequence.ControlChange()
-      initial_sustain_event.CopyFrom(sustain_event)
-      initial_sustain_events[sustain_event.instrument] = initial_sustain_event
+  initial_time_signature = None
+  for time_signature in sorted(sequence.time_signatures,
+                               key=lambda time_signature: time_signature.time):
+    if time_signature.time <= start_time:
+      initial_time_signature = music_pb2.NoteSequence.TimeSignature()
+      initial_time_signature.CopyFrom(time_signature)
       continue
-    elif sustain_event.time >= end_time:
+    elif time_signature.time >= end_time:
       break
-    new_sustain_event = subsequence.control_changes.add()
-    new_sustain_event.CopyFrom(sustain_event)
-    new_sustain_event.time -= start_time
-  for _, initial_sustain_event in initial_sustain_events.items():
-    initial_sustain_event.time = 0.0
-    subsequence.control_changes.extend([initial_sustain_event])
-  subsequence.control_changes.sort(key=lambda cc: cc.time)
+    new_time_signature = subsequence.time_signatures.add()
+    new_time_signature.CopyFrom(time_signature)
+    new_time_signature.time -= start_time
+  if initial_time_signature:
+    initial_time_signature.time = 0.0
+    subsequence.time_signatures.extend([initial_time_signature])
+  subsequence.time_signatures.sort(key=lambda ts: ts.time)
 
-  # Pitch bends are deleted entirely.
+  # Extract key signatures.
+  del subsequence.key_signatures[:]
+  initial_key_signature = None
+  for key_signature in sorted(sequence.key_signatures,
+                              key=lambda key_signature: key_signature.time):
+    if key_signature.time <= start_time:
+      initial_key_signature = music_pb2.NoteSequence.KeySignature()
+      initial_key_signature.CopyFrom(key_signature)
+      continue
+    elif key_signature.time >= end_time:
+      break
+    new_key_signature = subsequence.key_signatures.add()
+    new_key_signature.CopyFrom(key_signature)
+    new_key_signature.time -= start_time
+  if initial_key_signature:
+    initial_key_signature.time = 0.0
+    subsequence.key_signatures.extend([initial_key_signature])
+  subsequence.key_signatures.sort(key=lambda ks: ks.time)
+
+  # Extract tempos.
+  del subsequence.tempos[:]
+  initial_tempo = None
+  for tempo in sorted(sequence.tempos, key=lambda tempo: tempo.time):
+    if tempo.time <= start_time:
+      initial_tempo = music_pb2.NoteSequence.Tempo()
+      initial_tempo.CopyFrom(tempo)
+      continue
+    elif tempo.time >= end_time:
+      break
+    new_tempo = subsequence.tempos.add()
+    new_tempo.CopyFrom(tempo)
+    new_tempo.time -= start_time
+  if initial_tempo:
+    initial_tempo.time = 0.0
+    subsequence.tempos.extend([initial_tempo])
+  subsequence.tempos.sort(key=lambda tempo: tempo.time)
+
+  # Extract chord symbols (other text annotations are deleted).
+  del subsequence.text_annotations[:]
+  chord_symbols = [annotation for annotation in sequence.text_annotations
+                   if annotation.annotation_type == CHORD_SYMBOL]
+  initial_chord_symbol = None
+  for chord_symbol in sorted(chord_symbols,
+                             key=lambda chord_symbol: chord_symbol.time):
+    if chord_symbol.time <= start_time:
+      initial_chord_symbol = music_pb2.NoteSequence.TextAnnotation()
+      initial_chord_symbol.CopyFrom(chord_symbol)
+      continue
+    elif chord_symbol.time >= end_time:
+      break
+    new_chord_symbol = subsequence.text_annotations.add()
+    new_chord_symbol.CopyFrom(chord_symbol)
+    new_chord_symbol.time -= start_time
+  if initial_chord_symbol:
+    initial_chord_symbol.time = 0.0
+    subsequence.text_annotations.extend([initial_chord_symbol])
+  subsequence.text_annotations.sort(key=lambda ta: ta.time)
+
+  # Remove pitch bend and control change events.
   del subsequence.pitch_bends[:]
+  del subsequence.control_changes[:]
 
   subsequence.subsequence_info.start_time_offset = start_time
   subsequence.subsequence_info.end_time_offset = (
       sequence.total_time - start_time - subsequence.total_time)
 
   return subsequence
-
-
-def shift_sequence_times(sequence, shift_seconds):
-  """Shifts times in a notesequence.
-
-  Only forward shifts are supported.
-
-  Args:
-    sequence: The NoteSequence to shift.
-    shift_seconds: The amount to shift.
-
-  Returns:
-    A new NoteSequence with shifted times.
-
-  Raises:
-    ValueError: If the shift amount is invalid.
-    QuantizationStatusException: If the sequence has already been quantized.
-  """
-  if shift_seconds <= 0:
-    raise ValueError('Invalid shift amount: {}'.format(shift_seconds))
-  if is_quantized_sequence(sequence):
-    raise QuantizationStatusException(
-        'Can shift only unquantized NoteSequences.')
-
-  shifted = music_pb2.NoteSequence()
-  shifted.CopyFrom(sequence)
-
-  # Delete subsequence_info because our frame of reference has shifted.
-  shifted.ClearField('subsequence_info')
-
-  # Shift notes.
-  for note in shifted.notes:
-    note.start_time += shift_seconds
-    note.end_time += shift_seconds
-
-  events_to_shift = [
-      shifted.time_signatures, shifted.key_signatures, shifted.tempos,
-      shifted.pitch_bends, shifted.control_changes, shifted.text_annotations,
-      shifted.section_annotations]
-
-  for event in itertools.chain(*events_to_shift):
-    event.time += shift_seconds
-
-  shifted.total_time += shift_seconds
-
-  return shifted
-
-
-def remove_redundant_data(sequence):
-  """Returns a copy of the sequence with redundant data removed.
-
-  An event is considered redundant if it is a time signature, a key signature,
-  or a tempo that differs from the previous event of the same type only by time.
-  For example, a tempo mark of 120 qpm at 5 seconds would be considered
-  redundant if it followed a tempo mark of 120 qpm and 4 seconds.
-
-  Fields in sequence_metadata are considered redundant if the same string is
-  repeated.
-
-  Args:
-    sequence: The sequence to process.
-
-  Returns:
-    A new sequence with redundant events removed.
-  """
-  fixed_sequence = copy.deepcopy(sequence)
-  for events in [
-      fixed_sequence.time_signatures, fixed_sequence.key_signatures,
-      fixed_sequence.tempos]:
-    events.sort(key=lambda e: e.time)
-    for i in range(len(events) - 1, 0, -1):
-      tmp_ts = copy.deepcopy(events[i])
-      tmp_ts.time = events[i - 1].time
-      # If the only difference between the two events is time, then delete the
-      # second one.
-      if tmp_ts == events[i - 1]:
-        del events[i]
-
-  if fixed_sequence.HasField('sequence_metadata'):
-    # Add composers and genres, preserving order, but dropping duplicates.
-    del fixed_sequence.sequence_metadata.composers[:]
-    added_composer = set()
-    for composer in sequence.sequence_metadata.composers:
-      if composer not in added_composer:
-        fixed_sequence.sequence_metadata.composers.append(composer)
-        added_composer.add(composer)
-
-    del fixed_sequence.sequence_metadata.genre[:]
-    added_genre = set()
-    for genre in sequence.sequence_metadata.genre:
-      if genre not in added_genre:
-        fixed_sequence.sequence_metadata.genre.append(genre)
-        added_genre.add(genre)
-
-  return fixed_sequence
-
-
-def concatenate_sequences(sequences, sequence_durations=None):
-  """Concatenate a series of NoteSequences together.
-
-  Individual sequences will be shifted using shift_sequence_times and then
-  merged together using the protobuf MergeFrom method. This means that any
-  global values (e.g., ticks_per_quarter) will be overwritten by each sequence
-  and only the final value will be used. After this, redundant data will be
-  removed with remove_redundant_data.
-
-  Args:
-    sequences: A list of sequences to concatenate.
-    sequence_durations: An optional list of sequence durations to use. If not
-      specified, the total_time value will be used. Specifying durations is
-      useful if the sequences to be concatenated are effectively longer than
-      their total_time (e.g., a sequence that ends with a rest).
-
-  Returns:
-    A new sequence that is the result of concatenating *sequences.
-
-  Raises:
-    ValueError: If the length of sequences and sequence_durations do not match
-        or if a specified duration is less than the total_time of the sequence.
-  """
-  if sequence_durations and len(sequences) != len(sequence_durations):
-    raise ValueError(
-        'sequences and sequence_durations must be the same length.')
-  current_total_time = 0
-  cat_seq = music_pb2.NoteSequence()
-  for i in range(len(sequences)):
-    sequence = sequences[i]
-    if sequence_durations and sequence_durations[i] < sequence.total_time:
-      raise ValueError(
-          'Specified sequence duration ({}) must not be less than the '
-          'total_time of the sequence ({})'.format(
-              sequence_durations[i], sequence.total_time))
-    if current_total_time > 0:
-      cat_seq.MergeFrom(shift_sequence_times(sequence, current_total_time))
-    else:
-      cat_seq.MergeFrom(sequence)
-
-    if sequence_durations:
-      current_total_time += sequence_durations[i]
-    else:
-      current_total_time = cat_seq.total_time
-
-  # Delete subsequence_info because we've joined several subsequences.
-  cat_seq.ClearField('subsequence_info')
-
-  return remove_redundant_data(cat_seq)
-
-
-def expand_section_groups(sequence):
-  """Expands a NoteSequence based on its section_groups.
-
-  Args:
-    sequence: The sequence to expand.
-
-  Returns:
-    A copy of the original sequence, expanded based on its section_groups. If
-    the sequence has no section_groups, a copy of the original sequence will be
-    returned.
-  """
-  if not sequence.section_groups:
-    return copy.deepcopy(sequence)
-
-  sections = {}
-  section_durations = {}
-  for i in range(len(sequence.section_annotations)):
-    section_id = sequence.section_annotations[i].section_id
-    start_time = sequence.section_annotations[i].time
-    if i < len(sequence.section_annotations) - 1:
-      end_time = sequence.section_annotations[i + 1].time
-    else:
-      end_time = sequence.total_time
-
-    subsequence = extract_subsequence(sequence, start_time, end_time)
-    # This is a subsequence, so the section_groups no longer make sense.
-    del subsequence.section_groups[:]
-    # This subsequence contains only 1 section and it has been shifted to time
-    # 0.
-    del subsequence.section_annotations[:]
-    subsequence.section_annotations.add(time=0, section_id=section_id)
-
-    sections[section_id] = subsequence
-    section_durations[section_id] = end_time - start_time
-
-  # Recursively expand section_groups.
-  def sections_in_group(section_group):
-    sections = []
-    for section in section_group.sections:
-      field = section.WhichOneof('section_type')
-      if field == 'section_id':
-        sections.append(section.section_id)
-      elif field == 'section_group':
-        sections.extend(sections_in_group(section.section_group))
-    return sections * section_group.num_times
-
-  sections_to_concat = []
-  for section_group in sequence.section_groups:
-    sections_to_concat.extend(sections_in_group(section_group))
-
-  return concatenate_sequences(
-      [sections[i] for i in sections_to_concat],
-      [section_durations[i] for i in sections_to_concat])
 
 
 def _is_power_of_2(x):
@@ -742,14 +557,14 @@ def _quantize_notes(note_sequence, steps_per_second):
     if note.quantized_end_step > note_sequence.total_quantized_steps:
       note_sequence.total_quantized_steps = note.quantized_end_step
 
-  # Also quantize control changes and text annotations.
-  for event in itertools.chain(
-      note_sequence.control_changes, note_sequence.text_annotations):
-    # Quantize the event time, disallowing negative time.
-    event.quantized_step = quantize_to_step(event.time, steps_per_second)
-    if event.quantized_step < 0:
+  # Also quantize chord symbol annotations.
+  for annotation in note_sequence.text_annotations:
+    # Quantize the chord time, disallowing negative time.
+    annotation.quantized_step = quantize_to_step(
+        annotation.time, steps_per_second)
+    if annotation.quantized_step < 0:
       raise NegativeTimeException(
-          'Got negative event time: step = %s' % event.quantized_step)
+          'Got negative chord time: step = %s' % annotation.quantized_step)
 
 
 def quantize_note_sequence(note_sequence, steps_per_quarter):

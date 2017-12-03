@@ -148,6 +148,7 @@ class KeyMelodyEncoderDecoder(encoder_decoder.EventSequenceEncoderDecoder):
       binary_counter_bits: The number of input bits to use as a counter for the
           metric position of the next note.
     """
+    super(encoder_decoder.EventSequenceEncoderDecoder, self).__init__()
     self._lookback_distances = (lookback_distances
                                 if lookback_distances is not None
                                 else DEFAULT_LOOKBACK_DISTANCES)
@@ -285,7 +286,7 @@ class KeyMelodyEncoderDecoder(encoder_decoder.EventSequenceEncoderDecoder):
       offset += 1
 
     # Phase information
-    input_[offset] = getPhase(position, True)
+    input_[offset] = self.getPhase(position, True)
     offset += 1
 
     # for val in input_:

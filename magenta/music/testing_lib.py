@@ -51,17 +51,6 @@ def add_control_changes_to_sequence(note_sequence, instrument, control_changes):
     control_change.instrument = instrument
 
 
-def add_pitch_bends_to_sequence(
-    note_sequence, instrument, program, pitch_bends):
-  for time, bend in pitch_bends:
-    pitch_bend = note_sequence.pitch_bends.add()
-    pitch_bend.time = time
-    pitch_bend.bend = bend
-    pitch_bend.program = program
-    pitch_bend.instrument = instrument
-    pitch_bend.is_drum = False  # Assume false for this test method.
-
-
 def add_quantized_steps_to_sequence(sequence, quantized_steps):
   assert len(sequence.notes) == len(quantized_steps)
 
@@ -81,21 +70,11 @@ def add_quantized_chord_steps_to_sequence(sequence, quantized_steps):
     chord.quantized_step = quantized_step
 
 
-def add_quantized_control_steps_to_sequence(sequence, quantized_steps):
-  assert len(sequence.control_changes) == len(quantized_steps)
-
-  for cc, quantized_step in zip(sequence.control_changes, quantized_steps):
-    cc.quantized_step = quantized_step
-
-
 class TrivialOneHotEncoding(encoder_decoder.OneHotEncoding):
   """One-hot encoding that uses the identity encoding."""
 
-  def __init__(self, num_classes, num_steps=None):
-    if num_steps is not None and len(num_steps) != num_classes:
-      raise ValueError('num_steps must have length num_classes')
+  def __init__(self, num_classes):
     self._num_classes = num_classes
-    self._num_steps = num_steps
 
   @property
   def num_classes(self):
@@ -110,9 +89,3 @@ class TrivialOneHotEncoding(encoder_decoder.OneHotEncoding):
 
   def decode_event(self, event):
     return event
-
-  def event_to_num_steps(self, event):
-    if self._num_steps is not None:
-      return self._num_steps[event]
-    else:
-      return 1

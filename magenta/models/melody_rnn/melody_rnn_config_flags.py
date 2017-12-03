@@ -130,7 +130,6 @@ def config_from_flags():
     return melody_rnn_model.MelodyRnnConfig(
         generator_details, encoder_decoder, hparams)
   else:
-    print(melody_rnn_model.default_configs)
     if FLAGS.config not in melody_rnn_model.default_configs:
       raise MelodyRnnConfigFlagsException(
           '`--config` must be one of %s. Got %s.' % (

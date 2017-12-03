@@ -285,7 +285,7 @@ class BasicLSTMCell(RNNCell):
   @property
   def output_size(self):
     return self._num_units
-
+  
   def call(self, inputs, state):
     """Long short-term memory cell (LSTM).
     Args:
