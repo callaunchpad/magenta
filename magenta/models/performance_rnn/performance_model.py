@@ -25,6 +25,9 @@ from magenta.models.performance_rnn import performance_encoder_decoder
 from magenta.models.performance_rnn.performance_lib import PerformanceEvent
 from magenta.models.shared import events_rnn_model
 
+DEFAULT_MIN_NOTE = 48
+DEFAULT_MAX_NOTE = 84
+DEFAULT_TRANSPOSE_TO_KEY = 0
 
 # State for constructing a time-varying control sequence. Keeps track of the
 # current event position and time step in the generated performance, to allow
@@ -279,5 +282,18 @@ default_configs = {
         num_velocity_bins=32,
         density_bin_ranges=[1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0],
         density_window_size=3.0,
-        pitch_histogram_window_size=5.0)
+        pitch_histogram_window_size=5.0),
+    'phase_performance': PerformanceRnnConfig(
+        magenta.protobuf.generator_pb2.GeneratorDetails(
+            id='performance',
+            description='Performance RNN'),
+        magenta.music.KeyMelodyEncoderDecoder(
+            min_note=DEFAULT_MIN_NOTE,
+            max_note=DEFAULT_MAX_NOTE),
+        tf.contrib.training.HParams(
+            batch_size=64,
+            rnn_layer_sizes=[512, 512, 512],
+            dropout_keep_prob=1.0,
+            clip_norm=3,
+            learning_rate=0.001))
 }

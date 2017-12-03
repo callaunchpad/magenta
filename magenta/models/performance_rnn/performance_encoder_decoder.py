@@ -91,6 +91,7 @@ class NoteDensityOneHotEncoding(encoder_decoder.OneHotEncoding):
           to use when quantizing. The number of bins will be one larger than the
           list length.
     """
+    super(encoder_decoder.OneHotEncoding, self).__init__(self)
     self._density_bin_ranges = density_bin_ranges
 
   @property

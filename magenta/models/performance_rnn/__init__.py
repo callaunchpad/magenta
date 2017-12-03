@@ -14,4 +14,4 @@
 
 """Imports Performance RNN model."""
 
-from performance_model import PerformanceRnnModel
+from .performance_model import PerformanceRnnModel
