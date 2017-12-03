@@ -338,7 +338,7 @@ class OneHotEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
 
   @property
   def input_size(self):
-    return self._one_hot_encoding.num_classes
+    return self._one_hot_encoding.num_classes + 1
 
   @property
   def num_classes(self):
@@ -364,8 +364,15 @@ class OneHotEventSequenceEncoderDecoder(EventSequenceEncoderDecoder):
     """
     input_ = [0.0] * self.input_size
     input_[self._one_hot_encoding.encode_event(events[position])] = 1.0
+    input_[-1] = self.getPhase(position, True)
     return input_
 
+  def getPhase(self, position, debug_output = False, cycle = 4):
+    phase = (position % (cycle * DEFAULT_STEPS_PER_BAR)) / (cycle * DEFAULT_STEPS_PER_BAR)
+    if debug_output: 
+        print(phase, position)
+    return phase
+                  
   def events_to_label(self, events, position):
     """Returns the label for the given position in the event sequence.
 
