@@ -47,40 +47,50 @@ _WEIGHTS_VARIABLE_NAME = "kernel"
 _BIAS_VARIABLE_NAME = "bias"
 _Linear = rnn_cell_impl._Linear
 
+def cubic_spline(y0, y1, y2, y3, mu):
+    return ( \
+        (-0.5*y0+1.5*y1-1.5*y2+0.5*y3)*(mu**3) + \
+        (y0-2.5*y1+2.0*y2-0.5*y3)*(mu**2) + \
+        (-0.5*y0+0.5*y2)*mu + \
+        (y1))
+
+
+def cubic_spline_interp(X, mu, phase_num, order):
+    """
+    Args:
+        W: Array of the items to interpolate between
+    """
+    k = lambda n: ((phase_num)//1 + n - 1) % order
+    return cubic_spline(X[k(0)], X[k(1)], X[k(2)], X[k(3)], mu)
+
+
 class PhaseFunctionedFFNN(base_layer.Layer):
 
     # only one layer for demonstration purposes
-    def __init__(self, input_shape, output_shape, dropout=0.5):
-        self.phases = 4
+    def __init__(self, input_shape, output_shape, dropout=0.5, order=4, interp=cubic_spline_interp):
+        self.order = 4
         self.x = tf.placeholder(tf.float32, [None, input_shape])
-        self.W0 = [tf.Variable(tf.zeros([input_shape, output_shape])) for _ in range(self.phases)]
-        self.b0 = [tf.Variable(tf.zeros([output_shape])) for _ in range(self.phases)]
+        self.W0 = [tf.Variable(tf.zeros([input_shape, output_shape])) for _ in range(self.order)]
+        self.b0 = [tf.Variable(tf.zeros([output_shape])) for _ in range(self.order)]
         self.layers = [self.W0, self.b0]
-
+        self.interp = interp
         return
 
-    def __call__(self, input):
-        if(len(input.shape)>1):
-            phase = input[:,-1]
-            input = input[:,:-1]
+    def __call__(self, _input):
+        if(len(_input.shape)>1):
+            phase = _input[:,-1]
+            _input = _input[:,:-1]
         else:
-            phase = input[-1]
-            input = input[:-1]
+            phase = _input[-1]
+            _input = _input[:-1]
         phase_num = (4 * phase) 
 
         phase_depth = phase_num % 1 # how far into the current phase we are
-        k = lambda n: ((phase_num)//1 + n - 1) % 4
-        W0_phase = self.cubic_spline(self.W0[k(0)], self.W0[k(1)], self.W0[k(2)], self.W0[k(3)], w)
-        b0_phase = self.cubi|c_spline(self.b0[k(0)], self.b0[k(1)], self.b0[k(2)], self.b0[k(3)], w)
 
-        return tf.matmul(W0_phase, input) + b0_phase
+        W0_phase = self.interp(self.W0, w, phase_num, self.order)
+        b0_phase = self.interp(self.b0, w, phase_num, self.order)
 
-    def cubic_spline(self, y0, y1, y2, y3, mu):
-        return ( \
-            (-0.5*y0+1.5*y1-1.5*y2+0.5*y3)*mu*mu*mu + \
-            (y0-2.5*y1+2.0*y2-0.5*y3)*mu*mu + \
-            (-0.5*y0+0.5*y2)*mu + \
-            (y1))
+        return tf.matmul(W0_phase, _input) + b0_phase
 
 
 
@@ -137,10 +147,10 @@ class PhaseFunctionedLSTM(BasicLSTMCell):
             concat = nn_ops.bias_add(concat, bias_split[i])
             phased_temp[i] = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
 
-        i = self.cubic_spline(phased_temp[0][0], phased_temp[1][0], phased_temp[2][0], phased_temp[3][0], w)
-        j = self.cubic_spline(phased_temp[0][1], phased_temp[1][1], phased_temp[2][1], phased_temp[3][1], w)
-        f = self.cubic_spline(phased_temp[0][2], phased_temp[1][2], phased_temp[2][2], phased_temp[3][2], w)
-        o = self.cubic_spline(phased_temp[0][3], phased_temp[1][3], phased_temp[2][3], phased_temp[3][3], w)
+        i = cubic_spline(phased_temp[0][0], phased_temp[1][0], phased_temp[2][0], phased_temp[3][0], w)
+        j = cubic_spline(phased_temp[0][1], phased_temp[1][1], phased_temp[2][1], phased_temp[3][1], w)
+        f = cubic_spline(phased_temp[0][2], phased_temp[1][2], phased_temp[2][2], phased_temp[3][2], w)
+        o = cubic_spline(phased_temp[0][3], phased_temp[1][3], phased_temp[2][3], phased_temp[3][3], w)
 
         new_c = (c * sigmoid(f + self._forget_bias) + sigmoid(i) * self._activation(j))
 
@@ -155,12 +165,6 @@ class PhaseFunctionedLSTM(BasicLSTMCell):
         return new_h, new_state
 
 
-    def cubic_spline(self, y0, y1, y2, y3, mu):
-        return ( \
-            (-0.5*y0+1.5*y1-1.5*y2+0.5*y3)*mu*mu*mu + \
-            (y0-2.5*y1+2.0*y2-0.5*y3)*mu*mu + \
-            (-0.5*y0+0.5*y2)*mu + \
-            (y1))
 
     def build(self, inputs_shape):
         if inputs_shape[1] is None:
